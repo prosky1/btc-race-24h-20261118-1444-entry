@@ -40,6 +40,8 @@ const SL_BPS = 80; // exit: -0.8% stop-loss on cost
 const MAX_HOLD = 300; // bars
 const COOLDOWN = 60; // bars after a stop-loss exit
 const MAX_SLIPPAGE_BPS = 500;
+const BPS = 10000n; // basis-point scale: 10000 bps = 100%
+const TURN_LOOKBACK = 5; // bars back for the turn check
 
 const closes: bigint[] = [];
 let entryBar = -1;
@@ -67,9 +69,9 @@ await runBars({
       const val = state.value(SYMBOL, qty);
       const sell = { side: 'sell' as const, symbol: SYMBOL, qty, max_slippage_bps: MAX_SLIPPAGE_BPS };
       // Take-profit.
-      if (val * 10000n >= cost * BigInt(10000 + TP_BPS)) return [sell];
+      if (val * BPS >= cost * (BPS + BigInt(TP_BPS))) return [sell];
       // Stop-loss (+ cooldown).
-      if (val * 10000n <= cost * BigInt(10000 - SL_BPS)) {
+      if (val * BPS <= cost * (BPS - BigInt(SL_BPS))) {
         coolUntil = state.seq + COOLDOWN;
         return [sell];
       }
@@ -83,9 +85,9 @@ await runBars({
     if (state.seq < coolUntil) return [];
     const mean = sma();
     if (mean === null) return [];
-    const fiveBack = closes[closes.length - 6] as bigint;
-    const dipped = close * 10000n < mean * BigInt(10000 - DEEP_BPS);
-    const turning = close * 10000n > fiveBack * BigInt(10000 + JUMP_BPS);
+    const fiveBack = closes[closes.length - (TURN_LOOKBACK + 1)] as bigint;
+    const dipped = close * BPS < mean * (BPS - BigInt(DEEP_BPS));
+    const turning = close * BPS > fiveBack * (BPS + BigInt(JUMP_BPS));
     if (!dipped || !turning) return [];
     entryBar = state.seq;
     const notional = state.cash;
